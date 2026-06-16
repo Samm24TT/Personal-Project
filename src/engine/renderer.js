@@ -14,6 +14,9 @@ import {
   HIT_ZONE_Y,
   HIT_ZONE_HEIGHT,
   NOTE_RADIUS,
+  NOTE_W,
+  NOTE_H,
+  NOTE_R,
   COLORS,
 } from '../constants.js';
 
@@ -26,13 +29,22 @@ export function laneCentreX(laneIndex) {
   return LANE_PADDING + laneWidth * laneIndex + laneWidth / 2 + LANE_GAP * laneIndex;
 }
 
+/** Convert a #RRGGBB hex colour to an rgba() string. */
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // --- Background & Lanes -------------------------------------------------------
 
 /**
  * Fill the background and draw the 4 vertical lanes plus subtle dividers.
  * @param {CanvasRenderingContext2D} ctx
+ * @param {number[]} [laneFlashes] — opacity per lane for key-press flash
  */
-export function drawLanes(ctx) {
+export function drawLanes(ctx, laneFlashes) {
   // Background
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
@@ -46,6 +58,13 @@ export function drawLanes(ctx) {
     // Lane background (subtle lighter strip)
     ctx.fillStyle = COLORS.laneBg;
     ctx.fillRect(x, 0, laneWidth, CANVAS_H);
+
+    // Lane flash overlay — brightens when key is pressed
+    if (laneFlashes && laneFlashes[i] > 0.01) {
+      const alpha = laneFlashes[i] * 0.20;
+      ctx.fillStyle = hexToRgba(LANES[i].color, alpha);
+      ctx.fillRect(x, 0, laneWidth, CANVAS_H);
+    }
 
     // Lane divider lines (left edge of each lane)
     ctx.strokeStyle = COLORS.laneLine;
@@ -71,8 +90,9 @@ export function drawLanes(ctx) {
 /**
  * Draw the hit-zone bar and its glow near the bottom of the screen.
  * @param {CanvasRenderingContext2D} ctx
+ * @param {Array<{ lane: number, radius: number, opacity: number }>} [hitEffects]
  */
-export function drawHitZone(ctx) {
+export function drawHitZone(ctx, hitEffects) {
   const barY = HIT_ZONE_Y;
 
   // Outer glow
@@ -87,6 +107,34 @@ export function drawHitZone(ctx) {
   // Solid bar
   ctx.fillStyle = COLORS.hitZone;
   ctx.fillRect(LANE_PADDING, barY, CANVAS_W - LANE_PADDING * 2, HIT_ZONE_HEIGHT);
+
+  // Hit effect rings — expanding coloured rings at the hit zone
+  if (hitEffects) {
+    for (const fx of hitEffects) {
+      if (fx.opacity <= 0) continue;
+      const cx = laneCentreX(fx.lane);
+      const cy = barY + HIT_ZONE_HEIGHT / 2;
+
+      ctx.save();
+      ctx.globalAlpha = fx.opacity;
+      ctx.strokeStyle = LANES[fx.lane].color;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = LANES[fx.lane].color;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(cx, cy, fx.radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Second thinner ring
+      ctx.lineWidth = 1;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(cx, cy, fx.radius * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  }
 }
 
 // --- Lane Labels -------------------------------------------------------------
@@ -119,33 +167,50 @@ export function drawLaneLabels(ctx) {
 // --- Notes -------------------------------------------------------------------
 
 /**
- * Draw a single note.
+ * Draw a single note as a rounded rectangle with a coloured glow.
  * @param {CanvasRenderingContext2D} ctx
- * @param {{ lane: number, y: number, active: boolean, hitResult?: string }} note
+ * @param {{ lane: number, y: number, active: boolean }} note
  */
 export function drawNote(ctx, note) {
   const cx = laneCentreX(note.lane);
   const color = LANES[note.lane].color;
+  const x = cx - NOTE_W / 2;
+  const y = note.y - NOTE_H / 2;
 
-  // Glow
-  const glowGrad = ctx.createRadialGradient(cx, note.y, NOTE_RADIUS * 0.3, cx, note.y, NOTE_RADIUS * 1.6);
-  glowGrad.addColorStop(0, color + '66');
-  glowGrad.addColorStop(1, 'transparent');
-  ctx.fillStyle = glowGrad;
+  // Outer glow (larger rounded rect behind the note)
+  const glowPad = 8;
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = hexToRgba(color, 0.45);
   ctx.beginPath();
-  ctx.arc(cx, note.y, NOTE_RADIUS * 1.6, 0, Math.PI * 2);
+  ctx.roundRect(x - glowPad, y - glowPad, NOTE_W + glowPad * 2, NOTE_H + glowPad * 2, NOTE_R + 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Main body — gradient from lighter to base colour
+  const bodyGrad = ctx.createLinearGradient(x, y, x, y + NOTE_H);
+  bodyGrad.addColorStop(0, hexToRgba(color, 0.95));
+  bodyGrad.addColorStop(1, hexToRgba(color, 0.7));
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.roundRect(x, y, NOTE_W, NOTE_H, NOTE_R);
   ctx.fill();
 
-  // Main circle
-  ctx.fillStyle = color;
+  // Border
+  ctx.strokeStyle = hexToRgba('#ffffff', 0.25);
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.arc(cx, note.y, NOTE_RADIUS, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.roundRect(x, y, NOTE_W, NOTE_H, NOTE_R);
+  ctx.stroke();
 
-  // Inner highlight
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  // Inner highlight stripe (top third, bright)
+  const hiGrad = ctx.createLinearGradient(x, y, x, y + NOTE_H * 0.5);
+  hiGrad.addColorStop(0, 'rgba(255,255,255,0.30)');
+  hiGrad.addColorStop(1, 'rgba(255,255,255,0.02)');
+  ctx.fillStyle = hiGrad;
   ctx.beginPath();
-  ctx.arc(cx - NOTE_RADIUS * 0.25, note.y - NOTE_RADIUS * 0.25, NOTE_RADIUS * 0.4, 0, Math.PI * 2);
+  ctx.roundRect(x + 2, y + 1, NOTE_W - 4, NOTE_H * 0.5, NOTE_R);
   ctx.fill();
 }
 
@@ -192,7 +257,7 @@ export function drawFeedback(ctx, feedbackItems) {
 // --- Progress Bar -----------------------------------------------------------
 
 /**
- * Draw a thin song-progress bar just below the lane-label area.
+ * Draw a thin song-progress bar at the bottom of the canvas.
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} songTimeS  — elapsed song time in seconds
  * @param {number} durationS  — total song duration in seconds
@@ -200,26 +265,157 @@ export function drawFeedback(ctx, feedbackItems) {
 export function drawProgressBar(ctx, songTimeS, durationS) {
   if (!durationS || durationS <= 0) return;
 
-  const barY = 68;
   const barH = 3;
+  const barY = CANVAS_H - 20;
   const barX = LANE_PADDING;
   const barW = CANVAS_W - LANE_PADDING * 2;
   const progress = Math.min(songTimeS / durationS, 1);
 
   // Track background
   ctx.fillStyle = COLORS.laneLine;
-  ctx.fillRect(barX, barY, barW, barH);
-
-  // Filled portion (white with subtle glow)
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fillRect(barX, barY, barW * progress, barH);
-
-  // Position dot
-  const dotX = barX + barW * progress;
-  ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.arc(dotX, barY + barH / 2, 3, 0, Math.PI * 2);
+  ctx.roundRect(barX, barY, barW, barH, 2);
   ctx.fill();
+
+  // Filled portion with lane-coloured gradient
+  if (progress > 0) {
+    const fillGrad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+    fillGrad.addColorStop(0, LANES[0].color);
+    fillGrad.addColorStop(0.33, LANES[1].color);
+    fillGrad.addColorStop(0.66, LANES[2].color);
+    fillGrad.addColorStop(1, LANES[3].color);
+    ctx.fillStyle = fillGrad;
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW * progress, barH, 2);
+    ctx.fill();
+  }
+
+  // Elapsed / total time labels
+  ctx.font = '10px system-ui, monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = COLORS.textDim;
+  const elapsed = formatTime(songTimeS);
+  ctx.fillText(elapsed, barX, barY - 6);
+
+  ctx.textAlign = 'right';
+  const total = formatTime(durationS);
+  ctx.fillText(total, barX + barW, barY - 6);
+}
+
+/** Format seconds as M:SS. */
+function formatTime(s) {
+  if (s < 0) s = 0;
+  const min = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${min}:${String(sec).padStart(2, '0')}`;
+}
+
+// --- Song Title -------------------------------------------------------------
+
+/**
+ * Draw the uploaded song filename at the top of the screen.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {string} title
+ */
+export function drawSongTitle(ctx, title) {
+  if (!title) return;
+
+  // Trim file extension for display
+  const display = title.replace(/\.(mp3|wav|ogg|flac|aac|m4a)$/i, '');
+
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = COLORS.textDim;
+
+  // Truncate if too long
+  const maxW = CANVAS_W - LANE_PADDING * 2 - 80;
+  const metrics = ctx.measureText(display);
+  const text = metrics.width > maxW
+    ? display.slice(0, Math.floor(display.length * maxW / metrics.width) - 1) + '…'
+    : display;
+
+  ctx.fillText(text, CANVAS_W / 2, 76);
+}
+
+// --- Combo Display ----------------------------------------------------------
+
+/**
+ * Draw a large prominent combo counter above the hit zone.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} combo
+ */
+export function drawCombo(ctx, combo) {
+  if (combo < 2) return;
+
+  const cx = CANVAS_W / 2;
+  const y = HIT_ZONE_Y - 72;
+
+  // Combo colour escalates at milestones
+  let color;
+  if (combo >= 100) color = '#ffd93d';   // gold
+  else if (combo >= 50) color = '#ff6b6b'; // hot red
+  else if (combo >= 25) color = '#4d96ff'; // blue
+  else color = '#ffffff';
+
+  // Pulsing glow
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 20 + (combo % 10) * 2;
+
+  // "COMBO" label
+  ctx.font = 'bold 11px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.8;
+  ctx.fillText('COMBO', cx, y - 4);
+
+  // Number
+  ctx.font = `bold ${Math.min(48, 28 + combo * 0.3)}px system-ui, sans-serif`;
+  ctx.textBaseline = 'top';
+  ctx.globalAlpha = 1;
+  ctx.fillText(String(combo), cx, y);
+
+  ctx.restore();
+}
+
+// --- Score Display ----------------------------------------------------------
+
+/**
+ * Draw the score in the top-right with an animated pop-up for recently-earned points.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} score
+ * @param {number} scoreDelta   — points just earned (0 = none to show)
+ * @param {number} deltaAgeMs   — how long since the delta appeared
+ */
+export function drawScore(ctx, score, scoreDelta, deltaAgeMs) {
+  // Main score (top-right)
+  ctx.font = '16px system-ui, monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = COLORS.textDim;
+  ctx.fillText(`SCORE  ${String(score).padStart(8, '0')}`, CANVAS_W - 24, 16);
+
+  // Animated delta pop-up
+  const DELTA_DURATION = 800;
+  if (scoreDelta > 0 && deltaAgeMs < DELTA_DURATION) {
+    const t = deltaAgeMs / DELTA_DURATION; // 0 → 1
+    const alpha = 1 - t;
+    const offsetY = -20 - t * 40; // float upward
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = 'bold 18px system-ui, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = '#ffd93d';
+    ctx.shadowColor = '#ffd93d';
+    ctx.shadowBlur = 8;
+    ctx.fillText(`+${scoreDelta}`, CANVAS_W - 24, 16 + offsetY);
+    ctx.restore();
+  }
 }
 
 // --- Frame Composer ----------------------------------------------------------
@@ -227,40 +423,58 @@ export function drawProgressBar(ctx, songTimeS, durationS) {
 /**
  * Draw one complete frame.  Call this from the rAF loop.
  * @param {CanvasRenderingContext2D} ctx
- * @param {{ notes: Array, combo: number, score: number,
- *           songTimeS?: number, duration?: number }} state
+ * @param {{
+ *   notes: Array,
+ *   feedback: Array,
+ *   combo: number,
+ *   score: number,
+ *   scoreDelta: number,
+ *   scoreDeltaAge: number,
+ *   laneFlashes: number[],
+ *   hitEffects: Array,
+ *   songTitle: string,
+ *   songTimeS: number,
+ *   duration: number,
+ * }} state
  */
 export function drawFrame(ctx, state) {
   ctx.save();
 
-  drawLanes(ctx);
-  drawHitZone(ctx);
+  // Background + lanes (with key-press flash)
+  drawLanes(ctx, state.laneFlashes);
+
+  // Hit zone (with hit effect rings)
+  drawHitZone(ctx, state.hitEffects);
+
+  // Lane labels (D F J K at top)
   drawLaneLabels(ctx);
 
-  // Song progress bar
-  if (state.songTimeS !== undefined && state.duration) {
-    drawProgressBar(ctx, state.songTimeS, state.duration);
+  // Song title
+  if (state.songTitle) {
+    drawSongTitle(ctx, state.songTitle);
   }
 
+  // Notes
   if (state.notes && state.notes.length > 0) {
     drawNotes(ctx, state.notes);
   }
 
+  // Feedback text
   if (state.feedback && state.feedback.length > 0) {
     drawFeedback(ctx, state.feedback);
   }
 
-  // Score / combo HUD (top-right)
-  ctx.font = '16px system-ui, monospace';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = COLORS.textDim;
-  ctx.fillText(`SCORE  ${String(state.score ?? 0).padStart(8, '0')}`, CANVAS_W - 24, 16);
-
+  // Combo (big centered number above hit zone)
   if (state.combo > 1) {
-    ctx.fillStyle = '#ffd93d';
-    ctx.font = 'bold 14px system-ui, sans-serif';
-    ctx.fillText(`${state.combo}x COMBO`, CANVAS_W - 24, 40);
+    drawCombo(ctx, state.combo);
+  }
+
+  // Score + delta animation (top-right)
+  drawScore(ctx, state.score ?? 0, state.scoreDelta ?? 0, state.scoreDeltaAge ?? 0);
+
+  // Progress bar (bottom)
+  if (state.songTimeS !== undefined && state.duration) {
+    drawProgressBar(ctx, state.songTimeS, state.duration);
   }
 
   ctx.restore();

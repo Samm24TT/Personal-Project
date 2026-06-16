@@ -14,6 +14,7 @@ import {
   LANE_COUNT,
   MISS_WINDOW,
   COUNTDOWN_S,
+  NOTE_RADIUS,
 } from '../constants.js';
 import { drawFrame, drawCountdown } from '../engine/renderer.js';
 import { setupKeyboard } from '../engine/input.js';
@@ -43,7 +44,7 @@ const FEEDBACK_DURATION_MS = 700;
  *   onRestart: () => void,
  * }} props
  */
-export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
+export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRestart }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const inputRef = useRef(null);
@@ -60,6 +61,11 @@ export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
     feedback: [],
     score: 0,
     combo: 0,
+    prevScore: 0,           // previous frame score (for delta animation)
+    scoreDelta: 0,          // points just earned (for pop-up)
+    scoreDeltaAge: 0,       // ms since scoreDelta appeared
+    laneFlashes: [0, 0, 0, 0],  // opacity per lane, decays each frame
+    hitEffects: [],         // { lane, radius, opacity } — expanding rings
   });
 
   // -------------------------------------------------------------------------
@@ -83,6 +89,11 @@ export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
     state.feedback = [];
     state.score = 0;
     state.combo = 0;
+    state.prevScore = 0;
+    state.scoreDelta = 0;
+    state.scoreDeltaAge = 0;
+    state.laneFlashes = [0, 0, 0, 0];
+    state.hitEffects = [];
     setSongDone(false);
     songStartedRef.current = false;
 
@@ -206,6 +217,9 @@ export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
       for (let lane = 0; lane < LANE_COUNT; lane++) {
         if (!input.consumePress(lane)) continue;
 
+        // Flash the lane on every keypress (even if no note is there)
+        state.laneFlashes[lane] = 1;
+
         // Find the closest un-hit note in this lane
         let closest = null;
         let closestDiff = Infinity;
@@ -226,6 +240,13 @@ export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
           state.score += points;
 
           if (result !== 'miss') {
+            // Hit effect ring
+            state.hitEffects.push({
+              lane,
+              radius: NOTE_RADIUS * 0.6,
+              opacity: 0.9,
+            });
+
             state.feedback.push({
               text:    result.toUpperCase(),
               lane,
@@ -241,24 +262,54 @@ export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
     // --- Cull stale notes ---
     state.notes = state.notes.filter((n) => !n.hit || n.active);
 
+    // --- Score delta (for pop-up animation) ---
+    const FRAME_MS = 16;
+    if (state.score !== state.prevScore) {
+      state.scoreDelta = state.score - state.prevScore;
+      state.scoreDeltaAge = 0;
+      state.prevScore = state.score;
+    } else {
+      state.scoreDeltaAge += FRAME_MS;
+    }
+
+    // --- Age lane flashes ---
+    const FLASH_DECAY = 0.12; // opacity lost per frame
+    for (let i = 0; i < LANE_COUNT; i++) {
+      state.laneFlashes[i] = Math.max(0, state.laneFlashes[i] - FLASH_DECAY);
+    }
+
+    // --- Age hit effects ---
+    for (const fx of state.hitEffects) {
+      fx.radius += 2.5;          // expand outward
+      fx.opacity -= 0.035;       // fade out
+    }
+    state.hitEffects = state.hitEffects.filter((fx) => fx.opacity > 0);
+
     // --- Age feedback ---
-    // (using a fixed ~16ms step since we don't track frame delta for feedback)
     for (const fb of state.feedback) {
-      fb.opacity -= 16 / FEEDBACK_DURATION_MS;
-      fb.y -= 16 * 0.04;
+      fb.opacity -= FRAME_MS / FEEDBACK_DURATION_MS;
+      fb.y -= FRAME_MS * 0.04;
     }
     state.feedback = state.feedback.filter((fb) => fb.opacity > 0);
 
     // --- Draw ---
     const ctx = canvas.getContext('2d');
     drawFrame(ctx, {
-      ...state,
+      notes:      state.notes,
+      feedback:   state.feedback,
+      score:      state.score,
+      combo:      state.combo,
+      scoreDelta: state.scoreDelta,
+      scoreDeltaAge: state.scoreDeltaAge,
+      laneFlashes: state.laneFlashes,
+      hitEffects: state.hitEffects,
+      songTitle,
       songTimeS,
       duration: audioBuffer.duration,
     });
 
     rafRef.current = requestAnimationFrame(loop);
-  }, [audioCtx, audioBuffer]);
+  }, [audioCtx, audioBuffer, songTitle]);
 
   // -------------------------------------------------------------------------
   // Mount / Unmount

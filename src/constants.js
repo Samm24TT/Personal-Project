@@ -24,6 +24,9 @@ export const LANE_GAP = 4;            // px between lanes
 export const HIT_ZONE_Y = 620;        // y-position of the hit zone (px from top)
 export const HIT_ZONE_HEIGHT = 12;    // thickness of the hit-zone bar
 export const NOTE_RADIUS = 22;        // radius of a falling note circle
+export const NOTE_W = 72;             // width of rounded-rect note
+export const NOTE_H = 22;             // height of rounded-rect note
+export const NOTE_R = 8;              // corner radius of rounded-rect note
 
 // --- Timing Windows (ms) ------------------------------------------------------
 export const PERFECT_WINDOW = 50;

@@ -13,6 +13,7 @@ export default function App() {
   const [screen, setScreen] = useState('upload');   // 'upload' | 'playing'
   const [beatmap, setBeatmap] = useState(null);
   const [audioBuffer, setAudioBuffer] = useState(null);
+  const [songTitle, setSongTitle] = useState('');
 
   // Single AudioContext for the whole session (analysis + playback).
   // Created lazily on first user interaction to satisfy browser autoplay policy.
@@ -30,9 +31,10 @@ export default function App() {
   }, []);
 
   // Callback from StartScreen when analysis completes
-  const handleReady = useCallback((bm, buf) => {
+  const handleReady = useCallback((bm, buf, title) => {
     setBeatmap(bm);
     setAudioBuffer(buf);
+    setSongTitle(title);
     setScreen('playing');
   }, []);
 
@@ -41,6 +43,7 @@ export default function App() {
     setScreen('upload');
     setBeatmap(null);
     setAudioBuffer(null);
+    setSongTitle('');
   }, []);
 
   return (
@@ -56,6 +59,7 @@ export default function App() {
           beatmap={beatmap}
           audioBuffer={audioBuffer}
           audioCtx={audioCtxRef.current}
+          songTitle={songTitle}
           onRestart={handleRestart}
         />
       )}

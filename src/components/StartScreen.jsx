@@ -61,7 +61,7 @@ export default function StartScreen({ ensureAudioCtx, onReady }) {
       resetNoteIds();
       const beatmap = generateBeatmap(onsets);
 
-      onReady(beatmap, audioBuffer);
+      onReady(beatmap, audioBuffer, file.name);
     } catch (err) {
       console.error('Audio analysis failed:', err);
       setStatus('error');
