@@ -10,6 +10,7 @@
   min-height: 100svh;
   gap: 20px;
   background: #0d0d14;
+  position: relative;
 }
 
 .game-canvas {
@@ -40,4 +41,51 @@
   color: #999;
   font-family: ui-monospace, Consolas, monospace;
   font-size: 13px;
+}
+
+/* --- Song-done overlay --- */
+
+.song-done-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(13, 13, 20, 0.85);
+  backdrop-filter: blur(6px);
+  z-index: 10;
+}
+
+.song-done-score {
+  margin: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 48px;
+  font-weight: 700;
+  color: #ffd93d;
+  letter-spacing: 2px;
+}
+
+.song-done-label {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: #777788;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.song-done-btn {
+  padding: 10px 32px;
+  border: 1px solid #4d96ff;
+  border-radius: 8px;
+  background: rgba(77, 150, 255, 0.12);
+  color: #4d96ff;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.song-done-btn:hover {
+  background: rgba(77, 150, 255, 0.25);
 }

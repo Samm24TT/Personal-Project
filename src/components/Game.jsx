@@ -1,38 +1,31 @@
 // =============================================================================
 // BeatStrike — Game Component
 // =============================================================================
-// Owns the <canvas>, runs the requestAnimationFrame loop, and wires together
-// keyboard input, note spawning, scoring, and rendering.
+// Owns the <canvas>, runs the rAF loop, and drives gameplay from the audio
+// clock so notes are perfectly synced with the music.
 // =============================================================================
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import {
   CANVAS_W,
   CANVAS_H,
   HIT_ZONE_Y,
-  MISS_WINDOW,
   SCROLL_SPEED,
   LANE_COUNT,
+  MISS_WINDOW,
 } from '../constants.js';
 import { drawFrame } from '../engine/renderer.js';
 import { setupKeyboard } from '../engine/input.js';
 import { judgeHit, judgeMiss, FEEDBACK_COLORS } from '../engine/scoring.js';
+import { TRAVEL_S } from '../engine/beatmap.js';
 import './Game.css';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-let _noteId = 0;
-function nextNoteId() {
-  return ++_noteId;
-}
-
-/** Time (ms) for a note to travel the full canvas height. */
-const TRAVEL_MS = (CANVAS_H / SCROLL_SPEED) * 1000;
-
-/** Spawn interval for test notes. */
-const SPAWN_INTERVAL_MS = 1000;
+/** Milliseconds a note needs to travel from top of canvas to hit zone. */
+const TRAVEL_MS = (HIT_ZONE_Y / SCROLL_SPEED) * 1000;
 
 /** How long feedback text lives (ms). */
 const FEEDBACK_DURATION_MS = 700;
@@ -41,64 +34,114 @@ const FEEDBACK_DURATION_MS = 700;
 // Component
 // ---------------------------------------------------------------------------
 
-export default function Game() {
+/**
+ * @param {{
+ *   beatmap: Array<{ id: number, lane: number, targetS: number }>,
+ *   audioBuffer: AudioBuffer,
+ *   audioCtx: AudioContext,
+ *   onRestart: () => void,
+ * }} props
+ */
+export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const inputRef = useRef(null);
-  const lastFrameRef = useRef(0);
+  const sourceRef = useRef(null);           // AudioBufferSourceNode
+  const startOffsetRef = useRef(0);         // audioCtx.currentTime when playback started
+  const [songDone, setSongDone] = useState(false);
 
+  // -------------------------------------------------------------------------
   // All mutable game state lives here to avoid React re-renders at 60fps.
+  // -------------------------------------------------------------------------
   const stateRef = useRef({
-    notes: [],
+    notes: [],              // all beatmap notes (pre-loaded)
     feedback: [],
     score: 0,
     combo: 0,
-    currentTimeMs: 0,
-    lastSpawnMs: -SPAWN_INTERVAL_MS,   // spawn one immediately
   });
 
-  // --- Game Loop ------------------------------------------------------------
-  const loop = useCallback((timestampMs) => {
+  // -------------------------------------------------------------------------
+  // Pre-load beatmap notes & start audio on mount
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const state = stateRef.current;
+
+    // Convert beatmap targetS → ms and pre-load into state.notes.
+    // Notes start inactive; they become active (visible) when they
+    // enter the scroll window.
+    state.notes = beatmap.map((n) => ({
+      id:       n.id,
+      lane:     n.lane,
+      targetMs: n.targetS * 1000,
+      active:   false,
+      hit:      false,
+      y:        0,
+    }));
+
+    state.feedback = [];
+    state.score = 0;
+    state.combo = 0;
+    setSongDone(false);
+
+    // Resume AudioContext (required by browser autoplay policy)
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    // Create source node and start playback
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+    sourceRef.current = source;
+
+    // Record the audio-clock time when playback starts
+    startOffsetRef.current = audioCtx.currentTime;
+
+    // Detect song end
+    source.onended = () => {
+      setSongDone(true);
+    };
+
+    return () => {
+      // Stop playback on unmount
+      try { source.stop(); } catch (_) { /* already stopped */ }
+    };
+  }, [beatmap, audioBuffer, audioCtx]);
+
+  // -------------------------------------------------------------------------
+  // Game Loop
+  // -------------------------------------------------------------------------
+  const loop = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // --- Delta time ---------------------------------------------------------
-    if (lastFrameRef.current === 0) {
-      lastFrameRef.current = timestampMs;
-    }
-    let deltaMs = timestampMs - lastFrameRef.current;
-    lastFrameRef.current = timestampMs;
-
-    // Clamp delta to avoid huge jumps when the tab loses focus.
-    if (deltaMs > 100) deltaMs = 100;
-
     const state = stateRef.current;
-    state.currentTimeMs += deltaMs;
-
     const input = inputRef.current;
 
-    // --- Spawn test notes ---------------------------------------------------
-    if (state.currentTimeMs - state.lastSpawnMs >= SPAWN_INTERVAL_MS) {
-      state.lastSpawnMs = state.currentTimeMs;
-      const lane = Math.floor(Math.random() * LANE_COUNT);
-      state.notes.push({
-        id:       nextNoteId(),
-        lane,
-        targetMs: state.currentTimeMs + TRAVEL_MS,
-        active:   true,
-        hit:      false,
-      });
-    }
+    // --- Clock ---
+    // Drive from the audio clock so notes stay in perfect sync even if
+    // the rAF cadence drifts.
+    const songTimeS = audioCtx.currentTime - startOffsetRef.current;
+    const currentTimeMs = songTimeS * 1000;
 
-    // --- Update note Y positions & auto-miss --------------------------------
+    // --- Activate notes that are now on screen ---
     for (const note of state.notes) {
-      if (!note.active) continue;
+      if (note.hit) continue;   // already resolved
 
-      // Derive y from timing
-      note.y = HIT_ZONE_Y - (SCROLL_SPEED * (note.targetMs - state.currentTimeMs)) / 1000;
+      // A note becomes visible when its arrival is within TRAVEL_MS
+      const visible = currentTimeMs > note.targetMs - TRAVEL_MS;
+
+      if (visible && !note.active) {
+        note.active = true;
+      }
+      if (note.active) {
+        // Derive y from timing
+        note.y = HIT_ZONE_Y - (SCROLL_SPEED * (note.targetMs - currentTimeMs)) / 1000;
+      }
 
       // Auto-miss: note scrolled well past the hit zone
-      if (!note.hit && state.currentTimeMs > note.targetMs + MISS_WINDOW) {
+      if (note.active && !note.hit && currentTimeMs > note.targetMs + MISS_WINDOW) {
         note.hit = true;
         note.active = false;
         const result = judgeMiss(state.combo);
@@ -114,7 +157,7 @@ export default function Game() {
       }
     }
 
-    // --- Process input ------------------------------------------------------
+    // --- Process input ---
     if (input) {
       for (let lane = 0; lane < LANE_COUNT; lane++) {
         if (!input.consumePress(lane)) continue;
@@ -124,7 +167,7 @@ export default function Game() {
         let closestDiff = Infinity;
         for (const note of state.notes) {
           if (!note.active || note.hit || note.lane !== lane) continue;
-          const diff = Math.abs(state.currentTimeMs - note.targetMs);
+          const diff = Math.abs(currentTimeMs - note.targetMs);
           if (diff < closestDiff) {
             closestDiff = diff;
             closest = note;
@@ -148,29 +191,34 @@ export default function Game() {
             });
           }
         }
-        // Note: pressing on an empty lane does nothing (no penalty)
       }
     }
 
-    // --- Cull stale notes ---------------------------------------------------
-    state.notes = state.notes.filter((n) => n.active);
+    // --- Cull stale notes ---
+    state.notes = state.notes.filter((n) => !n.hit || n.active);
 
-    // --- Age feedback -------------------------------------------------------
+    // --- Age feedback ---
+    // (using a fixed ~16ms step since we don't track frame delta for feedback)
     for (const fb of state.feedback) {
-      fb.opacity -= deltaMs / FEEDBACK_DURATION_MS;
-      fb.y -= deltaMs * 0.04;   // float upward
+      fb.opacity -= 16 / FEEDBACK_DURATION_MS;
+      fb.y -= 16 * 0.04;
     }
-    // Remove fully-faded items
     state.feedback = state.feedback.filter((fb) => fb.opacity > 0);
 
-    // --- Draw ---------------------------------------------------------------
+    // --- Draw ---
     const ctx = canvas.getContext('2d');
-    drawFrame(ctx, state);
+    drawFrame(ctx, {
+      ...state,
+      songTimeS,
+      duration: audioBuffer.duration,
+    });
 
     rafRef.current = requestAnimationFrame(loop);
-  }, []);
+  }, [audioCtx, audioBuffer]);
 
-  // --- Mount / Unmount ------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Mount / Unmount
+  // -------------------------------------------------------------------------
   useEffect(() => {
     inputRef.current = setupKeyboard();
     rafRef.current = requestAnimationFrame(loop);
@@ -185,7 +233,9 @@ export default function Game() {
     };
   }, [loop]);
 
-  // --- Render ---------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
   return (
     <div className="game-wrapper">
       <canvas
@@ -194,9 +244,25 @@ export default function Game() {
         width={CANVAS_W}
         height={CANVAS_H}
       />
-      <p className="game-hint">
-        Press <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd> to play
-      </p>
+
+      {/* Song-done overlay */}
+      {songDone && (
+        <div className="song-done-overlay">
+          <p className="song-done-score">
+            {stateRef.current.score.toLocaleString()}
+          </p>
+          <p className="song-done-label">Final Score</p>
+          <button className="song-done-btn" onClick={onRestart}>
+            Play Again
+          </button>
+        </div>
+      )}
+
+      {!songDone && (
+        <p className="game-hint">
+          Press <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd> to play
+        </p>
+      )}
     </div>
   );
 }

@@ -189,12 +189,46 @@ export function drawFeedback(ctx, feedbackItems) {
   }
 }
 
+// --- Progress Bar -----------------------------------------------------------
+
+/**
+ * Draw a thin song-progress bar just below the lane-label area.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} songTimeS  — elapsed song time in seconds
+ * @param {number} durationS  — total song duration in seconds
+ */
+export function drawProgressBar(ctx, songTimeS, durationS) {
+  if (!durationS || durationS <= 0) return;
+
+  const barY = 68;
+  const barH = 3;
+  const barX = LANE_PADDING;
+  const barW = CANVAS_W - LANE_PADDING * 2;
+  const progress = Math.min(songTimeS / durationS, 1);
+
+  // Track background
+  ctx.fillStyle = COLORS.laneLine;
+  ctx.fillRect(barX, barY, barW, barH);
+
+  // Filled portion (white with subtle glow)
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillRect(barX, barY, barW * progress, barH);
+
+  // Position dot
+  const dotX = barX + barW * progress;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(dotX, barY + barH / 2, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 // --- Frame Composer ----------------------------------------------------------
 
 /**
  * Draw one complete frame.  Call this from the rAF loop.
  * @param {CanvasRenderingContext2D} ctx
- * @param {{ notes: Array, combo: number, score: number }} state
+ * @param {{ notes: Array, combo: number, score: number,
+ *           songTimeS?: number, duration?: number }} state
  */
 export function drawFrame(ctx, state) {
   ctx.save();
@@ -202,6 +236,11 @@ export function drawFrame(ctx, state) {
   drawLanes(ctx);
   drawHitZone(ctx);
   drawLaneLabels(ctx);
+
+  // Song progress bar
+  if (state.songTimeS !== undefined && state.duration) {
+    drawProgressBar(ctx, state.songTimeS, state.duration);
+  }
 
   if (state.notes && state.notes.length > 0) {
     drawNotes(ctx, state.notes);
