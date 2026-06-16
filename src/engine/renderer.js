@@ -162,6 +162,33 @@ export function drawNotes(ctx, notes) {
   }
 }
 
+// --- Feedback Text -----------------------------------------------------------
+
+/**
+ * Draw hit-feedback text (Perfect / Good / Miss) that fades and floats upward.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Array<{ text: string, lane: number, y: number, opacity: number, color: string }>} feedbackItems
+ */
+export function drawFeedback(ctx, feedbackItems) {
+  for (const fb of feedbackItems) {
+    ctx.globalAlpha = fb.opacity;
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = fb.color;
+
+    // Subtle text shadow for pop
+    ctx.shadowColor = fb.color;
+    ctx.shadowBlur = 8;
+
+    ctx.fillText(fb.text, laneCentreX(fb.lane), fb.y);
+
+    // Reset
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+}
+
 // --- Frame Composer ----------------------------------------------------------
 
 /**
@@ -178,6 +205,10 @@ export function drawFrame(ctx, state) {
 
   if (state.notes && state.notes.length > 0) {
     drawNotes(ctx, state.notes);
+  }
+
+  if (state.feedback && state.feedback.length > 0) {
+    drawFeedback(ctx, state.feedback);
   }
 
   // Score / combo HUD (top-right)
