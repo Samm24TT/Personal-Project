@@ -265,3 +265,77 @@ export function drawFrame(ctx, state) {
 
   ctx.restore();
 }
+
+// --- Countdown Overlay --------------------------------------------------------
+
+/**
+ * Draw the 3-2-1-GO countdown overlay.
+ * Called every frame while songTimeS < 0 (before audio starts).
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} songTimeS — negative value representing seconds until start
+ */
+export function drawCountdown(ctx, songTimeS) {
+  const remaining = Math.abs(songTimeS); // seconds until audio starts
+
+  // Determine which phase we're in
+  let text, color, scale;
+  if (remaining > 2) {
+    // "3"
+    text = '3';
+    color = '#ff6b6b';
+    scale = 1;
+  } else if (remaining > 1) {
+    // "2"
+    text = '2';
+    color = '#ffd93d';
+    scale = 1;
+  } else if (remaining > 0) {
+    // "1"
+    text = '1';
+    color = '#6bcb77';
+    scale = 1;
+  } else {
+    // "GO!"
+    text = 'GO!';
+    color = '#4d96ff';
+    scale = 1.2;
+  }
+
+  // Pulse effect — use the fractional part of remaining for a subtle scale pop
+  const frac = remaining - Math.floor(remaining);
+  const pulse = 1 + 0.08 * Math.sin(frac * Math.PI);
+  const finalScale = scale * pulse;
+
+  // Semi-transparent backdrop
+  ctx.fillStyle = 'rgba(13, 13, 20, 0.7)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // Draw the number / GO
+  ctx.save();
+  ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
+  ctx.scale(finalScale, finalScale);
+  ctx.font = 'bold 96px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Text glow
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 40;
+  ctx.fillStyle = color;
+  ctx.fillText(text, 0, 0);
+
+  // Brighter inner text
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(text, 0, 0);
+
+  ctx.restore();
+
+  // Subtitle below the countdown number
+  ctx.font = '13px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#555566';
+  ctx.fillText('Get ready…', CANVAS_W / 2, CANVAS_H / 2 + 64);
+}

@@ -13,8 +13,9 @@ import {
   SCROLL_SPEED,
   LANE_COUNT,
   MISS_WINDOW,
+  COUNTDOWN_S,
 } from '../constants.js';
-import { drawFrame } from '../engine/renderer.js';
+import { drawFrame, drawCountdown } from '../engine/renderer.js';
 import { setupKeyboard } from '../engine/input.js';
 import { judgeHit, judgeMiss, FEEDBACK_COLORS } from '../engine/scoring.js';
 import { TRAVEL_S } from '../engine/beatmap.js';
@@ -48,6 +49,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
   const inputRef = useRef(null);
   const sourceRef = useRef(null);           // AudioBufferSourceNode
   const startOffsetRef = useRef(0);         // audioCtx.currentTime when playback started
+  const songStartedRef = useRef(false);     // true once countdown finishes & audio plays
   const [songDone, setSongDone] = useState(false);
 
   // -------------------------------------------------------------------------
@@ -82,25 +84,37 @@ export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
     state.score = 0;
     state.combo = 0;
     setSongDone(false);
+    songStartedRef.current = false;
 
     // Resume AudioContext (required by browser autoplay policy)
     if (audioCtx.state === 'suspended') {
       audioCtx.resume();
     }
 
-    // Create source node and start playback
+    // Schedule audio to start after the countdown.
+    // The song clock (songTimeS) will be negative during the countdown and
+    // reach 0 exactly when audio playback begins — keeping notes perfectly
+    // synced with the music.
+    const startAt = audioCtx.currentTime + COUNTDOWN_S;
+
     const source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(audioCtx.destination);
-    source.start(0);
+    source.start(startAt);
     sourceRef.current = source;
 
-    // Record the audio-clock time when playback starts
-    startOffsetRef.current = audioCtx.currentTime;
+    // Record the audio-clock time when playback *will* start.
+    // songTimeS = audioCtx.currentTime - startOffsetRef.current
+    //          → negative during countdown, 0 when audio begins
+    startOffsetRef.current = startAt;
 
-    // Detect song end
+    // Detect song end — only fire if playback actually started.
+    // Guards against premature onended from source.stop() during React
+    // strict-mode cleanup (which fires before the countdown finishes).
     source.onended = () => {
-      setSongDone(true);
+      if (songStartedRef.current) {
+        setSongDone(true);
+      }
     };
 
     return () => {
@@ -122,10 +136,40 @@ export default function Game({ beatmap, audioBuffer, audioCtx, onRestart }) {
     // --- Clock ---
     // Drive from the audio clock so notes stay in perfect sync even if
     // the rAF cadence drifts.
+    // songTimeS is negative during the countdown and reaches 0 when audio starts.
     const songTimeS = audioCtx.currentTime - startOffsetRef.current;
     const currentTimeMs = songTimeS * 1000;
 
+    // --- Countdown phase (songTimeS < 0) ---
+    if (songTimeS < 0) {
+      // Drain any keypresses that happened during countdown so they don't
+      // register as hits the moment gameplay begins.
+      if (input) {
+        for (let lane = 0; lane < LANE_COUNT; lane++) {
+          input.consumePress(lane);
+        }
+      }
+
+      const ctx = canvas.getContext('2d');
+      drawCountdown(ctx, songTimeS);
+
+      rafRef.current = requestAnimationFrame(loop);
+      return;
+    }
+
+    // --- Song active (songTimeS >= 0) ---
+    // Mark that playback has truly started so onended is allowed to fire.
+    songStartedRef.current = true;
+
+    // Primary song-end check: audio has played past the buffer duration.
+    // The source.onended callback is a fallback in case the rAF loop stalls.
+    if (songTimeS > audioBuffer.duration) {
+      setSongDone(true);
+      return;
+    }
+
     // --- Activate notes that are now on screen ---
+    // Only runs once songTimeS >= 0 (audio is playing).
     for (const note of state.notes) {
       if (note.hit) continue;   // already resolved
 

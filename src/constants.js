@@ -38,6 +38,12 @@ export const SCORE_MISS = 0;
 // Combo thresholds — milestone combo counts that trigger visual feedback
 export const COMBO_MILESTONES = [10, 25, 50, 100, 200];
 
+// --- Countdown -----------------------------------------------------------------
+// Seconds the countdown overlay is shown before audio + gameplay begin.
+// Gives the player time to get ready and prevents early notes from being
+// auto-missed before they scroll into view.
+export const COUNTDOWN_S = 3;
+
 // --- Note Speed ---------------------------------------------------------------
 // Pixels per second the notes scroll down the screen.
 export const SCROLL_SPEED = 400;

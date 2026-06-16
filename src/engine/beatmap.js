@@ -29,7 +29,7 @@ const TRAVEL_S = (HIT_ZONE_Y / SCROLL_SPEED);
  * Minimum distance in seconds between consecutive notes on the *same* lane.
  * Prevents physically-impossible clusters (two notes on the same key at once).
  */
-const MIN_SAME_LANE_GAP_S = 0.15;
+const MIN_SAME_LANE_GAP_S = 0.40;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -52,6 +52,7 @@ export function generateBeatmap(onsets) {
   const lastOnLane = new Array(LANE_COUNT).fill(-Infinity);
 
   const notes = [];
+  let skipped = 0;
 
   for (let i = 0; i < onsets.length; i++) {
     const onsetS = onsets[i];
@@ -59,6 +60,7 @@ export function generateBeatmap(onsets) {
 
     // Skip if this lane still has a recent note
     if (onsetS - lastOnLane[lane] < MIN_SAME_LANE_GAP_S) {
+      skipped++;
       continue;
     }
 
@@ -70,6 +72,11 @@ export function generateBeatmap(onsets) {
 
     lastOnLane[lane] = onsetS;
   }
+
+  console.log(
+    `[beatmap] ${onsets.length} onsets → ${notes.length} notes ` +
+    `(${skipped} skipped by same-lane gap).`,
+  );
 
   return notes;
 }
