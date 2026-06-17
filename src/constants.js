@@ -51,6 +51,13 @@ export const COUNTDOWN_S = 3;
 // Pixels per second the notes scroll down the screen.
 export const SCROLL_SPEED = 400;
 
+// --- Score Panel (glassmorphism card on left side) ---------------------------
+export const PANEL_X = 8;
+export const PANEL_Y = 88;
+export const PANEL_W = 130;
+export const PANEL_H = 148;
+export const PANEL_R = 10;           // corner radius
+
 // --- Colours (dark theme) -----------------------------------------------------
 export const COLORS = {
   bg:        '#0d0d14',

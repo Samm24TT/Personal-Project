@@ -20,6 +20,7 @@ import { drawFrame, drawCountdown } from '../engine/renderer.js';
 import { setupKeyboard } from '../engine/input.js';
 import { judgeHit, judgeMiss, FEEDBACK_COLORS } from '../engine/scoring.js';
 import { TRAVEL_S } from '../engine/beatmap.js';
+import { saveEntry, getTopN, isTopScore } from '../engine/leaderboard.js';
 import './Game.css';
 
 // ---------------------------------------------------------------------------
@@ -41,6 +42,7 @@ const FEEDBACK_DURATION_MS = 700;
  *   beatmap: Array<{ id: number, lane: number, targetS: number }>,
  *   audioBuffer: AudioBuffer,
  *   audioCtx: AudioContext,
+ *   songTitle: string,
  *   onRestart: () => void,
  * }} props
  */
@@ -51,7 +53,10 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
   const sourceRef = useRef(null);           // AudioBufferSourceNode
   const startOffsetRef = useRef(0);         // audioCtx.currentTime when playback started
   const songStartedRef = useRef(false);     // true once countdown finishes & audio plays
-  const [songDone, setSongDone] = useState(false);
+  // 'playing' | 'nameInput' | 'leaderboard'
+  const [songPhase, setSongPhase] = useState('playing');
+  const [playerName, setPlayerName] = useState('');
+  const [leaderboard, setLeaderboard] = useState([]);
 
   // -------------------------------------------------------------------------
   // All mutable game state lives here to avoid React re-renders at 60fps.
@@ -61,9 +66,13 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     feedback: [],
     score: 0,
     combo: 0,
+    maxCombo: 0,
     prevScore: 0,           // previous frame score (for delta animation)
     scoreDelta: 0,          // points just earned (for pop-up)
     scoreDeltaAge: 0,       // ms since scoreDelta appeared
+    totalJudged: 0,         // total notes resolved (hit + auto-miss)
+    totalPerfect: 0,
+    totalGood: 0,
     laneFlashes: [0, 0, 0, 0],  // opacity per lane, decays each frame
     hitEffects: [],         // { lane, radius, opacity } — expanding rings
   });
@@ -89,12 +98,18 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     state.feedback = [];
     state.score = 0;
     state.combo = 0;
+    state.maxCombo = 0;
     state.prevScore = 0;
     state.scoreDelta = 0;
     state.scoreDeltaAge = 0;
+    state.totalJudged = 0;
+    state.totalPerfect = 0;
+    state.totalGood = 0;
     state.laneFlashes = [0, 0, 0, 0];
     state.hitEffects = [];
-    setSongDone(false);
+    setSongPhase('playing');
+    setPlayerName('');
+    setLeaderboard([]);
     songStartedRef.current = false;
 
     // Resume AudioContext (required by browser autoplay policy)
@@ -124,7 +139,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     // strict-mode cleanup (which fires before the countdown finishes).
     source.onended = () => {
       if (songStartedRef.current) {
-        setSongDone(true);
+        setSongPhase('nameInput');
       }
     };
 
@@ -175,7 +190,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     // Primary song-end check: audio has played past the buffer duration.
     // The source.onended callback is a fallback in case the rAF loop stalls.
     if (songTimeS > audioBuffer.duration) {
-      setSongDone(true);
+      setSongPhase('nameInput');
       return;
     }
 
@@ -202,6 +217,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
         const result = judgeMiss(state.combo);
         state.combo = result.combo;
         state.score += result.points;
+        state.totalJudged++;
         state.feedback.push({
           text:    'MISS',
           lane:    note.lane,
@@ -238,6 +254,11 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
           closest.active = false;
           state.combo = combo;
           state.score += points;
+          state.totalJudged++;
+
+          if (result === 'perfect') state.totalPerfect++;
+          if (result === 'good') state.totalGood++;
+          if (combo > state.maxCombo) state.maxCombo = combo;
 
           if (result !== 'miss') {
             // Hit effect ring
@@ -294,6 +315,9 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
 
     // --- Draw ---
     const ctx = canvas.getContext('2d');
+    const accuracy = state.totalJudged > 0
+      ? (state.totalPerfect + state.totalGood) / state.totalJudged
+      : 0;
     drawFrame(ctx, {
       notes:      state.notes,
       feedback:   state.feedback,
@@ -301,6 +325,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
       combo:      state.combo,
       scoreDelta: state.scoreDelta,
       scoreDeltaAge: state.scoreDeltaAge,
+      accuracy,
       laneFlashes: state.laneFlashes,
       hitEffects: state.hitEffects,
       songTitle,
@@ -310,6 +335,37 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
 
     rafRef.current = requestAnimationFrame(loop);
   }, [audioCtx, audioBuffer, songTitle]);
+
+  // -------------------------------------------------------------------------
+  // Leaderboard handlers
+  // -------------------------------------------------------------------------
+  const handleSubmitName = useCallback(() => {
+    const state = stateRef.current;
+    const name = playerName.trim() || 'Anonymous';
+    const accuracy = state.totalJudged > 0
+      ? (state.totalPerfect + state.totalGood) / state.totalJudged
+      : 0;
+
+    saveEntry({
+      name,
+      score: state.score,
+      songTitle: songTitle || 'Unknown',
+      date: new Date().toISOString(),
+      accuracy,
+      maxCombo: state.maxCombo,
+      totalNotes: state.totalJudged,
+      perfects: state.totalPerfect,
+      goods: state.totalGood,
+      misses: state.totalJudged - state.totalPerfect - state.totalGood,
+    });
+
+    setLeaderboard(getTopN(10));
+    setSongPhase('leaderboard');
+  }, [playerName, songTitle]);
+
+  const handlePlayAgain = useCallback(() => {
+    onRestart();
+  }, [onRestart]);
 
   // -------------------------------------------------------------------------
   // Mount / Unmount
@@ -331,6 +387,14 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
+
+  const finalScore = stateRef.current.score;
+  const finalState = stateRef.current;
+  const finalAccuracy = finalState.totalJudged > 0
+    ? Math.round(((finalState.totalPerfect + finalState.totalGood) / finalState.totalJudged) * 100)
+    : 0;
+  const finalsMisses = finalState.totalJudged - finalState.totalPerfect - finalState.totalGood;
+
   return (
     <div className="game-wrapper">
       <canvas
@@ -340,20 +404,75 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
         height={CANVAS_H}
       />
 
-      {/* Song-done overlay */}
-      {songDone && (
+      {/* Name-entry overlay */}
+      {songPhase === 'nameInput' && (
         <div className="song-done-overlay">
-          <p className="song-done-score">
-            {stateRef.current.score.toLocaleString()}
-          </p>
+          <p className="song-done-score">{finalScore.toLocaleString()}</p>
           <p className="song-done-label">Final Score</p>
-          <button className="song-done-btn" onClick={onRestart}>
+
+          <div className="song-done-stats">
+            <span>{finalState.maxCombo}x max combo</span>
+            <span>{finalAccuracy}% accuracy</span>
+          </div>
+
+          {isTopScore(finalScore) && (
+            <p className="leaderboard-rank-new">🏆 Top 10 score!</p>
+          )}
+
+          <input
+            className="name-input"
+            type="text"
+            maxLength={20}
+            placeholder="Enter your name"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitName(); }}
+            autoFocus
+          />
+
+          <button className="song-done-btn" onClick={handleSubmitName}>
+            Save Score
+          </button>
+        </div>
+      )}
+
+      {/* Leaderboard overlay */}
+      {songPhase === 'leaderboard' && (
+        <div className="song-done-overlay">
+          <p className="leaderboard-title">🏆 Leaderboard</p>
+
+          <div className="leaderboard-list">
+            {leaderboard.map((entry, i) => {
+              const isCurrent = (
+                entry.score === finalState.score &&
+                entry.songTitle === (songTitle || 'Unknown') &&
+                entry.maxCombo === finalState.maxCombo
+              );
+              return (
+                <div
+                  key={i}
+                  className={`leaderboard-row${isCurrent ? ' leaderboard-row--current' : ''}`}
+                >
+                  <span className="leaderboard-rank">#{i + 1}</span>
+                  <span className="leaderboard-name">{entry.name}</span>
+                  <span className="leaderboard-score">{entry.score.toLocaleString()}</span>
+                  <span className="leaderboard-acc">{Math.round(entry.accuracy * 100)}%</span>
+                </div>
+              );
+            })}
+            {leaderboard.length === 0 && (
+              <p className="leaderboard-empty">No scores yet</p>
+            )}
+          </div>
+
+          <button className="song-done-btn" onClick={handlePlayAgain}>
             Play Again
           </button>
         </div>
       )}
 
-      {!songDone && (
+      {/* Keyboard hint — only during gameplay */}
+      {songPhase === 'playing' && (
         <p className="game-hint">
           Press <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd> to play
         </p>
