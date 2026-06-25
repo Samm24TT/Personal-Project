@@ -139,6 +139,12 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     // strict-mode cleanup (which fires before the countdown finishes).
     source.onended = () => {
       if (songStartedRef.current) {
+        // Tear down gameplay keyboard listener so D/F/J/K can be typed
+        // into the name input field.
+        if (inputRef.current) {
+          inputRef.current.teardown();
+          inputRef.current = null;
+        }
         setSongPhase('nameInput');
       }
     };
@@ -190,6 +196,10 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     // Primary song-end check: audio has played past the buffer duration.
     // The source.onended callback is a fallback in case the rAF loop stalls.
     if (songTimeS > audioBuffer.duration) {
+      if (inputRef.current) {
+        inputRef.current.teardown();
+        inputRef.current = null;
+      }
       setSongPhase('nameInput');
       return;
     }
@@ -380,6 +390,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
       }
       if (inputRef.current) {
         inputRef.current.teardown();
+        inputRef.current = null;
       }
     };
   }, [loop]);
