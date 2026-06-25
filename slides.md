@@ -56,4 +56,4 @@ Any student with an MP3 can play. Zero setup.
 <!-- 20s -->
 - [x] repo public — github.com/Samm24TT/Personal-Project
 - [x] MCP + skill + agent used
-- [ ] report.md in team repo
+- [x] report.md in team repo

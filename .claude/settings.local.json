@@ -2,11 +2,22 @@
   "permissions": {
     "allow": [
       "Bash(npm run *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(node scripts/check.mjs)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'docs: rewrite README with gameplay, tech stack, and live demo link *)",
+      "Bash(git push *)",
+      "Bash(git -C /mnt/c/Users/User/Documents/my-ch3-project log --all --name-only --oneline)",
+      "Bash(git remote *)",
+      "Bash(gh repo *)",
+      "Bash(git commit *)",
+      "Bash(gh search *)",
+      "Bash(gh api *)",
+      "Bash(git *)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "filesystem"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }
