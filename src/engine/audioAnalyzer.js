@@ -55,7 +55,7 @@ export async function analyzeAudio(arrayBuffer, audioCtx) {
 
 // --- Mono extraction ----------------------------------------------------------
 
-function getMonoSamples(audioBuffer) {
+export function getMonoSamples(audioBuffer) {
   const length = audioBuffer.length;
   const channels = audioBuffer.numberOfChannels;
 
@@ -93,7 +93,7 @@ function getMonoSamples(audioBuffer) {
  * @param {number}       sampleRate
  * @returns {number[]}              — onset times in seconds
  */
-function detectOnsets(samples, sampleRate) {
+export function detectOnsets(samples, sampleRate) {
   // --- Frame parameters ---
   const frameSize = 1024;                           // ~23 ms at 44.1 kHz
   const hopSize   = 512;                            // 50 % overlap
@@ -160,7 +160,7 @@ function detectOnsets(samples, sampleRate) {
 
 // --- Adaptive threshold (running mean of flux) ---------------------------------
 
-function computeAdaptiveThreshold(flux, windowSize, multiplier) {
+export function computeAdaptiveThreshold(flux, windowSize, multiplier) {
   const len   = flux.length;
   const result = new Float32Array(len);
 
@@ -188,7 +188,7 @@ function computeAdaptiveThreshold(flux, windowSize, multiplier) {
  * @param {number}   durationS      — total song length in seconds
  * @returns {number[]}              — dense array of beat timestamps in seconds
  */
-function generateTempoBasedBeats(detectedOnsets, durationS) {
+export function generateTempoBasedBeats(detectedOnsets, durationS) {
   // --- 1. Estimate BPM ---
   let bpm = 120; // default
 
@@ -226,7 +226,7 @@ function generateTempoBasedBeats(detectedOnsets, durationS) {
 
 // --- Peak picker ---------------------------------------------------------------
 
-function findPeaks(flux, thresholds, minDistance) {
+export function findPeaks(flux, thresholds, minDistance) {
   const peaks = [];
   let lastPeak = -minDistance;
 
