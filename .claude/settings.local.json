@@ -13,7 +13,12 @@
       "Bash(git commit *)",
       "Bash(gh search *)",
       "Bash(gh api *)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(npm test *)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(kill %1)",
+      "Bash(npx vite *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
     ]
   },
   "enableAllProjectMcpServers": true,
