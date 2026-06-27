@@ -58,6 +58,13 @@ export const PANEL_W = 130;
 export const PANEL_H = 148;
 export const PANEL_R = 10;           // corner radius
 
+// --- Audio Visualization -------------------------------------------------------
+export const VIS_BAR_COUNT = 64;        // number of frequency bars
+export const VIS_MAX_HEIGHT = 200;      // max bar height in px
+export const VIS_OPACITY = 0.15;        // background opacity (subtle)
+export const VIS_SMOOTHING = 0.82;      // AnalyserNode smoothingTimeConstant
+export const VIS_FFT_SIZE = 256;        // FFT size (gives 128 frequency bins)
+
 // --- Colours (dark theme) -----------------------------------------------------
 export const COLORS = {
   bg:        '#0d0d14',

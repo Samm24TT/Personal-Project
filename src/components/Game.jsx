@@ -21,6 +21,7 @@ import { setupKeyboard } from '../engine/input.js';
 import { judgeHit, judgeMiss, FEEDBACK_COLORS } from '../engine/scoring.js';
 import { TRAVEL_S } from '../engine/beatmap.js';
 import { saveEntry, getTopN, isTopScore } from '../engine/leaderboard.js';
+import { createVisualizer, getFrequencyData } from '../engine/audioVisualizer.js';
 import './Game.css';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +52,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
   const rafRef = useRef(null);
   const inputRef = useRef(null);
   const sourceRef = useRef(null);           // AudioBufferSourceNode
+  const visualizerRef = useRef(null);       // { analyser, dataArray }
   const startOffsetRef = useRef(0);         // audioCtx.currentTime when playback started
   const songStartedRef = useRef(false);     // true once countdown finishes & audio plays
   // 'playing' | 'nameInput' | 'leaderboard'
@@ -125,7 +127,12 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
 
     const source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(audioCtx.destination);
+
+    // Route audio through an AnalyserNode for real-time visualization.
+    // createVisualizer handles: source → analyser → destination
+    const viz = createVisualizer(audioCtx, source);
+    visualizerRef.current = viz;
+
     source.start(startAt);
     sourceRef.current = source;
 
@@ -328,6 +335,16 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     const accuracy = state.totalJudged > 0
       ? (state.totalPerfect + state.totalGood) / state.totalJudged
       : 0;
+
+    // Grab real-time frequency data for visualization
+    let freqData = null;
+    if (visualizerRef.current) {
+      freqData = getFrequencyData(
+        visualizerRef.current.analyser,
+        visualizerRef.current.dataArray,
+      );
+    }
+
     drawFrame(ctx, {
       notes:      state.notes,
       feedback:   state.feedback,
@@ -341,6 +358,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
       songTitle,
       songTimeS,
       duration: audioBuffer.duration,
+      freqData,
     });
 
     rafRef.current = requestAnimationFrame(loop);

@@ -18,7 +18,8 @@
       "Bash(curl -s http://localhost:5173)",
       "Bash(kill %1)",
       "Bash(npx vite *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "mcp__filesystem__directory_tree"
     ]
   },
   "enableAllProjectMcpServers": true,

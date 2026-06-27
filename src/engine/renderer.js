@@ -22,6 +22,9 @@ import {
   PANEL_W,
   PANEL_H,
   PANEL_R,
+  VIS_BAR_COUNT,
+  VIS_MAX_HEIGHT,
+  VIS_OPACITY,
   COLORS,
 } from '../constants.js';
 
@@ -40,6 +43,78 @@ function hexToRgba(hex, alpha) {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// --- Audio Visualization (frequency bars behind lanes) ------------------------
+
+/**
+ * Draw frequency-reactive bars spanning the full canvas width.
+ * Rendered first in the frame so lanes and notes appear on top.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Uint8Array|null} freqData — 0–255 per frequency bin (from AnalyserNode)
+ */
+export function drawVisualization(ctx, freqData) {
+  if (!freqData || freqData.length === 0) return;
+
+  const binCount = freqData.length;
+  const barCount = VIS_BAR_COUNT;
+  const barW = CANVAS_W / barCount;
+  const maxH = VIS_MAX_HEIGHT;
+
+  // Lane colours for gradient across bars: red → yellow → green → blue
+  const laneColors = LANES.map((l) => l.color);
+
+  ctx.save();
+  ctx.globalAlpha = VIS_OPACITY;
+
+  for (let i = 0; i < barCount; i++) {
+    // Map bar index → frequency bin (sample evenly across available bins)
+    const binIdx = Math.floor((i / barCount) * binCount);
+    const amplitude = freqData[binIdx] / 255; // normalize to 0–1
+    const barH = amplitude * maxH;
+    if (barH < 1) continue;
+
+    const x = i * barW;
+    const y = CANVAS_H - barH;
+
+    // Colour: interpolate across the 4 lane colours
+    const t = i / (barCount - 1); // 0 → 1
+    const colorIdx = t * (laneColors.length - 1);
+    const lo = Math.floor(colorIdx);
+    const hi = Math.min(lo + 1, laneColors.length - 1);
+    const frac = colorIdx - lo;
+
+    const color = lerpColor(laneColors[lo], laneColors[hi], frac);
+
+    // Bar with subtle glow
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.fillRect(x, y, barW - 1, barH);
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Linearly interpolate between two hex colours.
+ * @param {string} a — #RRGGBB
+ * @param {string} b — #RRGGBB
+ * @param {number} t — 0–1
+ * @returns {string} — rgba() colour string
+ */
+function lerpColor(a, b, t) {
+  const ar = parseInt(a.slice(1, 3), 16);
+  const ag = parseInt(a.slice(3, 5), 16);
+  const ab = parseInt(a.slice(5, 7), 16);
+  const br = parseInt(b.slice(1, 3), 16);
+  const bg = parseInt(b.slice(3, 5), 16);
+  const bb = parseInt(b.slice(5, 7), 16);
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return `rgb(${r},${g},${bl})`;
 }
 
 // --- Background & Lanes -------------------------------------------------------
@@ -583,10 +658,16 @@ export function drawCombo(ctx, combo, songTimeS) {
  *   songTitle: string,
  *   songTimeS: number,
  *   duration: number,
+ *   freqData: Uint8Array|null,
  * }} state
  */
 export function drawFrame(ctx, state) {
   ctx.save();
+
+  // Audio visualization (frequency bars, behind everything)
+  if (state.freqData) {
+    drawVisualization(ctx, state.freqData);
+  }
 
   // Background + lanes (with key-press flash)
   drawLanes(ctx, state.laneFlashes);
