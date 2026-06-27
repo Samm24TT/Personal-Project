@@ -13,7 +13,6 @@ import {
   LANE_GAP,
   HIT_ZONE_Y,
   HIT_ZONE_HEIGHT,
-  NOTE_RADIUS,
   NOTE_W,
   NOTE_H,
   NOTE_R,
