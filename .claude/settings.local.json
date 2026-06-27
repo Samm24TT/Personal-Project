@@ -23,7 +23,8 @@
       "Bash(pkill -f vite)",
       "Bash(npx eslint *)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(npm cache *)"
     ]
   },
   "enableAllProjectMcpServers": true,
