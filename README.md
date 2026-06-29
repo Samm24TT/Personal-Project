@@ -6,6 +6,14 @@
 
 ---
 
+## 📸 Screenshots
+
+| Start Screen | Gameplay | Leaderboard |
+|:---:|:---:|:---:|
+| ![Start](screenshots/start-screen.png) | ![Gameplay](screenshots/gameplay.png) | ![Leaderboard](screenshots/leaderboard.png) |
+
+---
+
 ## 🎮 How to Play
 
 1. **Upload an MP3** — drag & drop or click to pick a song
