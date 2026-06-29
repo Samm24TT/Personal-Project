@@ -2,6 +2,7 @@ chapter: ch-4
 github_username: Samm24TT
 personal_repo_url: https://github.com/Samm24TT/Personal-Project.git
 slides_url: slides.md
+product_intro_url: product-intro.md
 stars: 3
 project_summary: A 4-lane browser rhythm game where any MP3 becomes a playable level — beat detection via Web Audio API, instant play with no backend or setup required.
 
