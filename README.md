@@ -109,6 +109,12 @@ This project was built as a ch-3 personal project using Claude Code. It demonstr
 
 ---
 
+## 📄 License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+---
+
 ## ⭐ Support
 
 If you find this project interesting, give it a star — it helps show this is a real, shared project.
