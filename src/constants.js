@@ -65,6 +65,18 @@ export const VIS_OPACITY = 0.15;        // background opacity (subtle)
 export const VIS_SMOOTHING = 0.82;      // AnalyserNode smoothingTimeConstant
 export const VIS_FFT_SIZE = 256;        // FFT size (gives 128 frequency bins)
 
+// --- Hit Particles ------------------------------------------------------------
+export const PARTICLE_COUNT = 14;       // particles spawned per hit
+export const PARTICLE_SPEED_MIN = 2;    // min outward speed (px/frame)
+export const PARTICLE_SPEED_MAX = 6;    // max outward speed (px/frame)
+export const PARTICLE_SPREAD = 140;     // degrees of angular spread
+export const PARTICLE_GRAVITY = 0.08;   // downward acceleration (px/frame²)
+export const PARTICLE_LIFE_MIN = 25;    // min lifetime (frames)
+export const PARTICLE_LIFE_MAX = 45;    // max lifetime (frames)
+export const PARTICLE_SIZE_MIN = 2;     // min radius (px)
+export const PARTICLE_SIZE_MAX = 4;     // max radius (px)
+export const PARTICLE_MAX_COUNT = 200;  // cap on active particles
+
 // --- Colours (dark theme) -----------------------------------------------------
 export const COLORS = {
   bg:        '#0d0d14',

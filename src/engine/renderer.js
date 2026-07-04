@@ -25,6 +25,16 @@ import {
   VIS_MAX_HEIGHT,
   VIS_OPACITY,
   COLORS,
+  PARTICLE_COUNT,
+  PARTICLE_SPEED_MIN,
+  PARTICLE_SPEED_MAX,
+  PARTICLE_SPREAD,
+  PARTICLE_GRAVITY,
+  PARTICLE_LIFE_MIN,
+  PARTICLE_LIFE_MAX,
+  PARTICLE_SIZE_MIN,
+  PARTICLE_SIZE_MAX,
+  PARTICLE_MAX_COUNT,
 } from '../constants.js';
 
 // --- Helpers ------------------------------------------------------------------
@@ -639,6 +649,94 @@ export function drawCombo(ctx, combo, songTimeS) {
   ctx.restore();
 }
 
+// --- Hit Particles ------------------------------------------------------------
+
+/**
+ * Create a new empty particles array.
+ * @returns {Array<{ x, y, vx, vy, life, maxLife, color, size }>}
+ */
+export function createParticles() {
+  return [];
+}
+
+/**
+ * Spawn burst particles at a lane's hit-zone position.
+ * @param {Array} particles — the live particles array (mutated in place)
+ * @param {number} lane — lane index (0–3)
+ */
+export function spawnParticles(particles, lane) {
+  const cx = laneCentreX(lane);
+  const cy = HIT_ZONE_Y + HIT_ZONE_HEIGHT / 2;
+  const color = LANES[lane].color;
+
+  // Centre angle: straight up (-90°), with spread around it
+  const baseAngle = -Math.PI / 2; // upward
+  const spreadRad = (PARTICLE_SPREAD * Math.PI) / 180;
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    // Random angle within spread
+    const angle = baseAngle + (Math.random() - 0.5) * spreadRad;
+    const speed = PARTICLE_SPEED_MIN + Math.random() * (PARTICLE_SPEED_MAX - PARTICLE_SPEED_MIN);
+    const life = PARTICLE_LIFE_MIN + Math.random() * (PARTICLE_LIFE_MAX - PARTICLE_LIFE_MIN);
+    const size = PARTICLE_SIZE_MIN + Math.random() * (PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN);
+
+    particles.push({
+      x: cx,
+      y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life,
+      maxLife: life,
+      color,
+      size,
+    });
+  }
+
+  // Enforce cap — remove oldest particles first
+  if (particles.length > PARTICLE_MAX_COUNT) {
+    particles.splice(0, particles.length - PARTICLE_MAX_COUNT);
+  }
+}
+
+/**
+ * Advance particle physics by one frame.
+ * @param {Array} particles — the live particles array (mutated in place)
+ */
+export function updateParticles(particles) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += PARTICLE_GRAVITY; // gravity pulls down
+    p.life -= 1;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+}
+
+/**
+ * Draw all active particles as small glowing circles.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Array} particles
+ */
+export function drawParticles(ctx, particles) {
+  if (particles.length === 0) return;
+
+  ctx.save();
+  for (const p of particles) {
+    const alpha = Math.max(0, p.life / p.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 // --- Frame Composer ----------------------------------------------------------
 
 /**
@@ -654,6 +752,7 @@ export function drawCombo(ctx, combo, songTimeS) {
  *   accuracy: number,
  *   laneFlashes: number[],
  *   hitEffects: Array,
+ *   particles: Array,
  *   songTitle: string,
  *   songTimeS: number,
  *   duration: number,
@@ -673,6 +772,11 @@ export function drawFrame(ctx, state) {
 
   // Hit zone (with hit effect rings)
   drawHitZone(ctx, state.hitEffects);
+
+  // Hit particles (burst on note hits)
+  if (state.particles && state.particles.length > 0) {
+    drawParticles(ctx, state.particles);
+  }
 
   // Lane labels (D F J K at top)
   drawLaneLabels(ctx);

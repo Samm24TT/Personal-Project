@@ -16,7 +16,7 @@ import {
   COUNTDOWN_S,
   NOTE_RADIUS,
 } from '../constants.js';
-import { drawFrame, drawCountdown } from '../engine/renderer.js';
+import { drawFrame, drawCountdown, createParticles, spawnParticles, updateParticles } from '../engine/renderer.js';
 import { setupKeyboard } from '../engine/input.js';
 import { judgeHit, judgeMiss, FEEDBACK_COLORS } from '../engine/scoring.js';
 import { TRAVEL_S } from '../engine/beatmap.js';
@@ -77,6 +77,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     totalGood: 0,
     laneFlashes: [0, 0, 0, 0],  // opacity per lane, decays each frame
     hitEffects: [],         // { lane, radius, opacity } — expanding rings
+    particles: [],          // { x, y, vx, vy, life, color, size } — hit burst
   });
 
   // -------------------------------------------------------------------------
@@ -109,6 +110,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     state.totalGood = 0;
     state.laneFlashes = [0, 0, 0, 0];
     state.hitEffects = [];
+    state.particles = [];
     setSongPhase('playing');
     setPlayerName('');
     setLeaderboard([]);
@@ -285,6 +287,9 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
               opacity: 0.9,
             });
 
+            // Burst particles
+            spawnParticles(state.particles, lane);
+
             state.feedback.push({
               text:    result.toUpperCase(),
               lane,
@@ -323,6 +328,9 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     }
     state.hitEffects = state.hitEffects.filter((fx) => fx.opacity > 0);
 
+    // --- Update particles ---
+    updateParticles(state.particles);
+
     // --- Age feedback ---
     for (const fb of state.feedback) {
       fb.opacity -= FRAME_MS / FEEDBACK_DURATION_MS;
@@ -355,6 +363,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
       accuracy,
       laneFlashes: state.laneFlashes,
       hitEffects: state.hitEffects,
+      particles: state.particles,
       songTitle,
       songTimeS,
       duration: audioBuffer.duration,
