@@ -239,7 +239,7 @@ export function drawLaneLabels(ctx) {
 
   for (let i = 0; i < LANES.length; i++) {
     const cx = laneCentreX(i);
-    const y = 40;
+    const y = 55;
 
     // Subtle circle behind label
     ctx.fillStyle = LANES[i].color + '22';   // low-opacity tint
@@ -422,18 +422,30 @@ export function drawSongTitle(ctx, title) {
   const display = title.replace(/\.(mp3|wav|ogg|flac|aac|m4a)$/i, '');
 
   // Position: centered, above the lane label area
-  const textY = 20;
-  ctx.font = '11px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = COLORS.textDim;
+  const textY = 16;
 
   // Truncate if too long (leave room for score panel on left)
   const maxW = CANVAS_W - PANEL_W - PANEL_X - 30;
+  ctx.font = 'bold 16px system-ui, sans-serif';
   const metrics = ctx.measureText(display);
   const text = metrics.width > maxW
     ? display.slice(0, Math.floor(display.length * maxW / metrics.width) - 1) + '…'
     : display;
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  // Glow behind text
+  ctx.save();
+  ctx.shadowColor = 'rgba(77, 150, 255, 0.5)';
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(text, CANVAS_W / 2, textY);
+  ctx.restore();
+
+  // Crisp white text on top
+  ctx.fillStyle = '#e0e0f0';
+  ctx.fillText(text, CANVAS_W / 2, textY);
 
   ctx.fillText(text, CANVAS_W / 2, textY);
 }
