@@ -59,8 +59,11 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
   const visualizerRef = useRef(null);       // { analyser, dataArray }
   const startOffsetRef = useRef(0);         // audioCtx.currentTime when playback started
   const songStartedRef = useRef(false);     // true once countdown finishes & audio plays
-  // 'playing' | 'nameInput' | 'leaderboard'
+  // 'playing' | 'paused' | 'nameInput' | 'leaderboard'
   const [songPhase, setSongPhase] = useState('playing');
+  const pausedRef = useRef(false);   // for use inside the rAF loop
+  const resumeCountdownRef = useRef(0); // performance.now() target when countdown ends (0 = inactive)
+  const [resumeCountdown, setResumeCountdown] = useState(null); // { text, color } for HTML overlay
   const [playerName, setPlayerName] = useState('');
   const [leaderboard, setLeaderboard] = useState([]);
 
@@ -177,6 +180,56 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
 
     const state = stateRef.current;
     const input = inputRef.current;
+
+    // --- Paused: freeze everything, just keep the rAF loop alive ---
+    if (pausedRef.current) {
+      // --- Resume countdown (3-2-1-GO) ---
+      if (resumeCountdownRef.current > 0) {
+        const now = performance.now();
+        const remaining = (resumeCountdownRef.current - now) / 1000; // seconds left
+
+        if (remaining <= 0) {
+          // Countdown done — actually resume audio
+          resumeCountdownRef.current = 0;
+          pausedRef.current = false;
+          setResumeCountdown(null);
+          audioCtx.resume();
+          setSongPhase('playing');
+        } else {
+          // Draw frozen game state so player can see where notes are
+          const ctx = canvas.getContext('2d');
+          drawFrame(ctx, {
+            notes:      state.notes,
+            feedback:   state.feedback,
+            score:      state.score,
+            combo:      state.combo,
+            scoreDelta: state.scoreDelta,
+            scoreDeltaAge: state.scoreDeltaAge,
+            accuracy: state.totalJudged > 0
+              ? (state.totalPerfect + state.totalGood) / state.totalJudged
+              : 0,
+            laneFlashes: state.laneFlashes,
+            hitEffects: state.hitEffects,
+            particles: state.particles,
+            songTitle,
+            songTimeS: audioCtx.currentTime - startOffsetRef.current,
+            duration: audioBuffer.duration,
+            freqData: null,
+          });
+
+          // Update countdown text state for HTML overlay
+          let text, color;
+          if (remaining > 2)      { text = '3'; color = '#ff6b6b'; }
+          else if (remaining > 1) { text = '2'; color = '#ffd93d'; }
+          else if (remaining > 0) { text = '1'; color = '#6bcb77'; }
+          else                    { text = 'GO!'; color = '#4d96ff'; }
+          setResumeCountdown({ text, color });
+        }
+      }
+
+      rafRef.current = requestAnimationFrame(loop);
+      return;
+    }
 
     // --- Clock ---
     // Drive from the audio clock so notes stay in perfect sync even if
@@ -413,6 +466,53 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
   }, [onRestart]);
 
   // -------------------------------------------------------------------------
+  // Pause / Resume
+  // -------------------------------------------------------------------------
+  const togglePause = useCallback(() => {
+    if (!pausedRef.current) {
+      // --- Pause ---
+      pausedRef.current = true;
+      audioCtx.suspend();
+      setSongPhase('paused');
+      resumeCountdownRef.current = 0;
+      setResumeCountdown(null);
+      // Drain lane presses so they don't fire on resume
+      if (inputRef.current) {
+        for (let lane = 0; lane < LANE_COUNT; lane++) {
+          inputRef.current.consumePress(lane);
+        }
+      }
+    } else if (resumeCountdownRef.current === 0) {
+      // --- Resume (start 3-2-1 countdown) ---
+      resumeCountdownRef.current = performance.now() + COUNTDOWN_S * 1000;
+      setSongPhase('resuming');
+    }
+  }, [audioCtx]);
+
+  const handleHome = useCallback(() => {
+    // Cancel any resume countdown
+    resumeCountdownRef.current = 0;
+    // Stop audio and go back to upload screen
+    try { sourceRef.current?.stop(); } catch (_) { /* already stopped */ }
+    onRestart();
+  }, [onRestart]);
+
+  // Spacebar to toggle pause
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.repeat) return;
+      if (e.code === 'Space' || e.key === ' ') {
+        // Don't pause/resume during countdown, name input, or leaderboard
+        if (songPhase === 'nameInput' || songPhase === 'leaderboard' || songPhase === 'resuming') return;
+        e.preventDefault();
+        togglePause();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [songPhase]);
+
+  // -------------------------------------------------------------------------
   // Mount / Unmount
   // -------------------------------------------------------------------------
   useEffect(() => {
@@ -449,6 +549,38 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
         width={CANVAS_W}
         height={CANVAS_H}
       />
+
+      {/* Pause overlay */}
+      {songPhase === 'paused' && (
+        <div className="song-done-overlay">
+          <p className="pause-title">⏸ Paused</p>
+          <div className="pause-actions">
+            <button className="song-done-btn" onClick={togglePause}>
+              ▶ Resume
+            </button>
+            <button className="song-done-btn" onClick={handleHome}>
+              🏠 Home
+            </button>
+            <button className="song-done-btn" onClick={handlePlayAgain}>
+              🔁 Restart
+            </button>
+          </div>
+          <p className="pause-hint">Press <kbd>Space</kbd> to resume</p>
+        </div>
+      )}
+
+      {/* Resume countdown — crisp HTML text on top of canvas */}
+      {songPhase === 'resuming' && resumeCountdown && (
+        <div className="countdown-overlay">
+          <span
+            className="countdown-number"
+            style={{ color: resumeCountdown.color }}
+          >
+            {resumeCountdown.text}
+          </span>
+          <span className="countdown-sub">Get ready…</span>
+        </div>
+      )}
 
       {/* Name-entry overlay */}
       {songPhase === 'nameInput' && (
@@ -520,7 +652,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
       {/* Keyboard hint — only during gameplay */}
       {songPhase === 'playing' && (
         <p className="game-hint">
-          Press <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd> to play
+          <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd> to play &nbsp;·&nbsp; <kbd>Space</kbd> to pause
         </p>
       )}
     </div>
