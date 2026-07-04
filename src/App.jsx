@@ -8,12 +8,14 @@
 import { useState, useRef, useCallback } from 'react';
 import StartScreen from './components/StartScreen.jsx';
 import Game from './components/Game.jsx';
+import { loadSettings } from './engine/settings.js';
 
 export default function App() {
   const [screen, setScreen] = useState('upload');   // 'upload' | 'playing'
   const [beatmap, setBeatmap] = useState(null);
   const [audioBuffer, setAudioBuffer] = useState(null);
   const [songTitle, setSongTitle] = useState('');
+  const [settings, setSettings] = useState(() => loadSettings());
 
   // Single AudioContext for the whole session (analysis + playback).
   // Created lazily on first user interaction to satisfy browser autoplay policy.
@@ -52,6 +54,8 @@ export default function App() {
         <StartScreen
           ensureAudioCtx={ensureAudioCtx}
           onReady={handleReady}
+          settings={settings}
+          onSettingsChange={setSettings}
         />
       )}
       {screen === 'playing' && beatmap && audioBuffer && (
@@ -61,6 +65,7 @@ export default function App() {
           audioCtx={audioCtxRef.current}
           songTitle={songTitle}
           onRestart={handleRestart}
+          settings={settings}
         />
       )}
     </>

@@ -17,6 +17,42 @@
   width: 100%;
 }
 
+/* --- Header with gear icon --- */
+
+.start-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.start-header > div {
+  flex: 1;
+}
+
+.gear-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.gear-btn:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.gear-btn--active {
+  background: rgba(77, 150, 255, 0.15);
+  border-color: rgba(77, 150, 255, 0.4);
+}
+
 /* --- Title --- */
 
 .start-title {

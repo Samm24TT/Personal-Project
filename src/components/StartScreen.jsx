@@ -8,6 +8,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { analyzeAudio } from '../engine/audioAnalyzer.js';
 import { generateBeatmap, resetNoteIds } from '../engine/beatmap.js';
+import SettingsPanel from './SettingsPanel.jsx';
 import './StartScreen.css';
 
 // ---------------------------------------------------------------------------
@@ -20,10 +21,11 @@ import './StartScreen.css';
  *   onReady: (beatmap: Array, audioBuffer: AudioBuffer) => void,
  * }} props
  */
-export default function StartScreen({ ensureAudioCtx, onReady }) {
+export default function StartScreen({ ensureAudioCtx, onReady, settings, onSettingsChange }) {
   const [status, setStatus] = useState('idle');    // idle | loading | error
   const [errorMsg, setErrorMsg] = useState('');
   const [fileName, setFileName] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const fileRef = useRef(null);
 
   // --- Process uploaded file -----------------------------------------------
@@ -100,8 +102,26 @@ export default function StartScreen({ ensureAudioCtx, onReady }) {
   return (
     <div className="start-screen">
       <div className="start-card">
-        <h1 className="start-title">BeatStrike</h1>
-        <p className="start-subtitle">Upload an MP3 and play along</p>
+        <div className="start-header">
+          <div>
+            <h1 className="start-title">BeatStrike</h1>
+            <p className="start-subtitle">Upload an MP3 and play along</p>
+          </div>
+          <button
+            className={`gear-btn${settingsOpen ? ' gear-btn--active' : ''}`}
+            onClick={() => setSettingsOpen(!settingsOpen)}
+            title="Settings"
+          >
+            ⚙
+          </button>
+        </div>
+
+        <SettingsPanel
+          settings={settings}
+          onChange={onSettingsChange}
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+        />
 
         {/* Drop zone  */}
         {status !== 'loading' && (

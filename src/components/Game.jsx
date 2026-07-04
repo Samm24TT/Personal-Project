@@ -31,6 +31,10 @@ import './Game.css';
 /** Milliseconds a note needs to travel from top of canvas to hit zone. */
 const TRAVEL_MS = (HIT_ZONE_Y / SCROLL_SPEED) * 1000;
 
+/** Adjusted scroll speed from settings. */
+const getSpeed = (settings) => SCROLL_SPEED * (settings?.scrollSpeed ?? 1);
+const getTravelMs = (settings) => (HIT_ZONE_Y / getSpeed(settings)) * 1000;
+
 /** How long feedback text lives (ms). */
 const FEEDBACK_DURATION_MS = 700;
 
@@ -47,7 +51,7 @@ const FEEDBACK_DURATION_MS = 700;
  *   onRestart: () => void,
  * }} props
  */
-export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRestart }) {
+export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRestart, settings }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const inputRef = useRef(null);
@@ -215,18 +219,20 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
 
     // --- Activate notes that are now on screen ---
     // Only runs once songTimeS >= 0 (audio is playing).
+    const speed = getSpeed(settings);
+    const travelMs = getTravelMs(settings);
     for (const note of state.notes) {
       if (note.hit) continue;   // already resolved
 
       // A note becomes visible when its arrival is within TRAVEL_MS
-      const visible = currentTimeMs > note.targetMs - TRAVEL_MS;
+      const visible = currentTimeMs > note.targetMs - travelMs;
 
       if (visible && !note.active) {
         note.active = true;
       }
       if (note.active) {
-        // Derive y from timing
-        note.y = HIT_ZONE_Y - (SCROLL_SPEED * (note.targetMs - currentTimeMs)) / 1000;
+        // Derive y from timing (adjusted scroll speed)
+        note.y = HIT_ZONE_Y - (speed * (note.targetMs - currentTimeMs)) / 1000;
       }
 
       // Auto-miss: note scrolled well past the hit zone
@@ -287,8 +293,10 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
               opacity: 0.9,
             });
 
-            // Burst particles
-            spawnParticles(state.particles, lane);
+            // Burst particles (if enabled)
+            if (settings?.particles !== false) {
+              spawnParticles(state.particles, lane);
+            }
 
             state.feedback.push({
               text:    result.toUpperCase(),
@@ -371,7 +379,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     });
 
     rafRef.current = requestAnimationFrame(loop);
-  }, [audioCtx, audioBuffer, songTitle]);
+  }, [audioCtx, audioBuffer, songTitle, settings]);
 
   // -------------------------------------------------------------------------
   // Leaderboard handlers
