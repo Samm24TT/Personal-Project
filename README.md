@@ -10,7 +10,7 @@
 
 | Start Screen | Gameplay | Leaderboard |
 |:---:|:---:|:---:|
-| ![Start](screenshots/start-screen.png) | ![Gameplay](screenshots/gameplay.png) | ![Leaderboard](screenshots/leaderboard.png) |
+| ![Start](screenshots/start-screen.png) | ![Gameplay](screenshots/game-play.png) | ![Leaderboard](screenshots/leaderboard.png) |
 
 ---
 
