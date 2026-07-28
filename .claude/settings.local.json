@@ -24,7 +24,18 @@
       "Bash(npx eslint *)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(npx vitest *)",
-      "Bash(npm cache *)"
+      "Bash(npm cache *)",
+      "mcp__filesystem__list_directory",
+      "Read(//tmp/team-05/**)",
+      "Bash(gh pr *)",
+      "Bash(grep -E '^team-[0-9]+$')",
+      "Read(//tmp/team-05-ch5/**)",
+      "Bash(mkdir -p ch-5/Samm24TT)",
+      "Bash(bash /home/samuel/doctor.sh ch-5 --no-update 2>&1)",
+      "Bash(gh issue *)",
+      "Bash(identify screenshots/*.png)",
+      "Bash(file screenshots/*.png)",
+      "Bash(gh auth *)"
     ]
   },
   "enableAllProjectMcpServers": true,
