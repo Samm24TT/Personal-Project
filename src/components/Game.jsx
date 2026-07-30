@@ -16,10 +16,9 @@ import {
   COUNTDOWN_S,
   NOTE_RADIUS,
 } from '../constants.js';
-import { drawFrame, drawCountdown, createParticles, spawnParticles, updateParticles } from '../engine/renderer.js';
+import { drawFrame, drawCountdown, spawnParticles, updateParticles } from '../engine/renderer.js';
 import { setupKeyboard } from '../engine/input.js';
 import { judgeHit, judgeMiss, FEEDBACK_COLORS } from '../engine/scoring.js';
-import { TRAVEL_S } from '../engine/beatmap.js';
 import { saveEntry, getTopN, isTopScore } from '../engine/leaderboard.js';
 import { createVisualizer, getFrequencyData } from '../engine/audioVisualizer.js';
 import './Game.css';
@@ -27,9 +26,6 @@ import './Game.css';
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Milliseconds a note needs to travel from top of canvas to hit zone. */
-const TRAVEL_MS = (HIT_ZONE_Y / SCROLL_SPEED) * 1000;
 
 /** Adjusted scroll speed from settings. */
 const getSpeed = (settings) => SCROLL_SPEED * (settings?.scrollSpeed ?? 1);
@@ -59,6 +55,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
   const visualizerRef = useRef(null);       // { analyser, dataArray }
   const startOffsetRef = useRef(0);         // audioCtx.currentTime when playback started
   const songStartedRef = useRef(false);     // true once countdown finishes & audio plays
+  const loopRef = useRef(null);             // holds latest loop callback for rAF self-reference
   // 'playing' | 'paused' | 'nameInput' | 'leaderboard'
   const [songPhase, setSongPhase] = useState('playing');
   const pausedRef = useRef(false);   // for use inside the rAF loop
@@ -66,12 +63,15 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
   const [resumeCountdown, setResumeCountdown] = useState(null); // { text, color } for HTML overlay
   const [playerName, setPlayerName] = useState('');
   const [leaderboard, setLeaderboard] = useState([]);
+  const [finalStats, setFinalStats] = useState(null); // snapshot of game state at song end
 
   // -------------------------------------------------------------------------
   // All mutable game state lives here to avoid React re-renders at 60fps.
+  // Notes are in a separate ref to avoid ESLint immutability conflicts
+  // with the mount useEffect.
   // -------------------------------------------------------------------------
+  const notesRef = useRef([]);
   const stateRef = useRef({
-    notes: [],              // all beatmap notes (pre-loaded)
     feedback: [],
     score: 0,
     combo: 0,
@@ -93,10 +93,10 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
   useEffect(() => {
     const state = stateRef.current;
 
-    // Convert beatmap targetS → ms and pre-load into state.notes.
+    // Convert beatmap targetS → ms and pre-load into notesRef.
     // Notes start inactive; they become active (visible) when they
     // enter the scroll window.
-    state.notes = beatmap.map((n) => ({
+    notesRef.current = beatmap.map((n) => ({
       id:       n.id,
       lane:     n.lane,
       targetMs: n.targetS * 1000,
@@ -118,9 +118,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     state.laneFlashes = [0, 0, 0, 0];
     state.hitEffects = [];
     state.particles = [];
-    setSongPhase('playing');
-    setPlayerName('');
-    setLeaderboard([]);
+    // playerName and leaderboard reset via useState defaults on remount
     songStartedRef.current = false;
 
     // Resume AudioContext (required by browser autoplay policy)
@@ -161,13 +159,22 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
           inputRef.current.teardown();
           inputRef.current = null;
         }
+        // Snapshot final game stats for the overlay
+        const s = stateRef.current;
+        setFinalStats({
+          score: s.score,
+          maxCombo: s.maxCombo,
+          totalJudged: s.totalJudged,
+          totalPerfect: s.totalPerfect,
+          totalGood: s.totalGood,
+        });
         setSongPhase('nameInput');
       }
     };
 
     return () => {
       // Stop playback on unmount
-      try { source.stop(); } catch (_) { /* already stopped */ }
+      try { source.stop(); } catch { /* already stopped */ }
     };
   }, [beatmap, audioBuffer, audioCtx]);
 
@@ -199,7 +206,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
           // Draw frozen game state so player can see where notes are
           const ctx = canvas.getContext('2d');
           drawFrame(ctx, {
-            notes:      state.notes,
+            notes:      notesRef.current,
             feedback:   state.feedback,
             score:      state.score,
             combo:      state.combo,
@@ -227,7 +234,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
         }
       }
 
-      rafRef.current = requestAnimationFrame(loop);
+      rafRef.current = requestAnimationFrame(loopRef.current);
       return;
     }
 
@@ -251,7 +258,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
       const ctx = canvas.getContext('2d');
       drawCountdown(ctx, songTimeS);
 
-      rafRef.current = requestAnimationFrame(loop);
+      rafRef.current = requestAnimationFrame(loopRef.current);
       return;
     }
 
@@ -266,6 +273,15 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
         inputRef.current.teardown();
         inputRef.current = null;
       }
+      // Snapshot final game stats for the overlay
+      const s = stateRef.current;
+      setFinalStats({
+        score: s.score,
+        maxCombo: s.maxCombo,
+        totalJudged: s.totalJudged,
+        totalPerfect: s.totalPerfect,
+        totalGood: s.totalGood,
+      });
       setSongPhase('nameInput');
       return;
     }
@@ -274,13 +290,14 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     // Only runs once songTimeS >= 0 (audio is playing).
     const speed = getSpeed(settings);
     const travelMs = getTravelMs(settings);
-    for (const note of state.notes) {
+    for (const note of notesRef.current) {
       if (note.hit) continue;   // already resolved
 
       // A note becomes visible when its arrival is within TRAVEL_MS
       const visible = currentTimeMs > note.targetMs - travelMs;
 
       if (visible && !note.active) {
+        // eslint-disable-next-line react-hooks/immutability -- game loop mutates notes at 60fps; new objects would cause GC pressure
         note.active = true;
       }
       if (note.active) {
@@ -292,7 +309,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
       if (note.active && !note.hit && currentTimeMs > note.targetMs + MISS_WINDOW) {
         note.hit = true;
         note.active = false;
-        const result = judgeMiss(state.combo);
+        const result = judgeMiss();
         state.combo = result.combo;
         state.score += result.points;
         state.totalJudged++;
@@ -317,7 +334,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
         // Find the closest un-hit note in this lane
         let closest = null;
         let closestDiff = Infinity;
-        for (const note of state.notes) {
+        for (const note of notesRef.current) {
           if (!note.active || note.hit || note.lane !== lane) continue;
           const diff = Math.abs(currentTimeMs - note.targetMs);
           if (diff < closestDiff) {
@@ -364,7 +381,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     }
 
     // --- Cull stale notes ---
-    state.notes = state.notes.filter((n) => !n.hit || n.active);
+    notesRef.current = notesRef.current.filter((n) => !n.hit || n.active);
 
     // --- Score delta (for pop-up animation) ---
     const FRAME_MS = 16;
@@ -384,6 +401,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
 
     // --- Age hit effects ---
     for (const fx of state.hitEffects) {
+      // eslint-disable-next-line react-hooks/immutability -- game loop mutates effects at 60fps; new objects would cause GC pressure
       fx.radius += 2.5;          // expand outward
       fx.opacity -= 0.035;       // fade out
     }
@@ -415,7 +433,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     }
 
     drawFrame(ctx, {
-      notes:      state.notes,
+      notes:      notesRef.current,
       feedback:   state.feedback,
       score:      state.score,
       combo:      state.combo,
@@ -431,8 +449,14 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
       freqData,
     });
 
-    rafRef.current = requestAnimationFrame(loop);
+    rafRef.current = requestAnimationFrame(loopRef.current);
   }, [audioCtx, audioBuffer, songTitle, settings]);
+
+  // Keep loopRef in sync so the rAF self-reference works.
+  // Updated via effect to avoid ref-write-during-render.
+  useEffect(() => {
+    loopRef.current = loop;
+  });
 
   // -------------------------------------------------------------------------
   // Leaderboard handlers
@@ -493,7 +517,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     // Cancel any resume countdown
     resumeCountdownRef.current = 0;
     // Stop audio and go back to upload screen
-    try { sourceRef.current?.stop(); } catch (_) { /* already stopped */ }
+    try { sourceRef.current?.stop(); } catch { /* already stopped */ }
     onRestart();
   }, [onRestart]);
 
@@ -510,14 +534,14 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [songPhase]);
+  }, [songPhase, togglePause]);
 
   // -------------------------------------------------------------------------
   // Mount / Unmount
   // -------------------------------------------------------------------------
   useEffect(() => {
     inputRef.current = setupKeyboard();
-    rafRef.current = requestAnimationFrame(loop);
+    rafRef.current = requestAnimationFrame(loopRef.current);
 
     return () => {
       if (rafRef.current) {
@@ -534,12 +558,12 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
   // Render
   // -------------------------------------------------------------------------
 
-  const finalScore = stateRef.current.score;
-  const finalState = stateRef.current;
-  const finalAccuracy = finalState.totalJudged > 0
-    ? Math.round(((finalState.totalPerfect + finalState.totalGood) / finalState.totalJudged) * 100)
+  // Snapshot final stats from React state (set when song ends) to avoid
+  // reading from refs during render, which violates React's rules.
+  const finalScore = finalStats?.score ?? 0;
+  const finalAccuracy = finalStats?.totalJudged > 0
+    ? Math.round(((finalStats.totalPerfect + finalStats.totalGood) / finalStats.totalJudged) * 100)
     : 0;
-  const finalsMisses = finalState.totalJudged - finalState.totalPerfect - finalState.totalGood;
 
   return (
     <div className="game-wrapper">
@@ -589,7 +613,7 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
           <p className="song-done-label">Final Score</p>
 
           <div className="song-done-stats">
-            <span>{finalState.maxCombo}x max combo</span>
+            <span>{finalStats?.maxCombo ?? 0}x max combo</span>
             <span>{finalAccuracy}% accuracy</span>
           </div>
 
@@ -622,9 +646,9 @@ export default function Game({ beatmap, audioBuffer, audioCtx, songTitle, onRest
           <div className="leaderboard-list">
             {leaderboard.map((entry, i) => {
               const isCurrent = (
-                entry.score === finalState.score &&
+                entry.score === (finalStats?.score ?? 0) &&
                 entry.songTitle === (songTitle || 'Unknown') &&
-                entry.maxCombo === finalState.maxCombo
+                entry.maxCombo === (finalStats?.maxCombo ?? 0)
               );
               return (
                 <div

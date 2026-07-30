@@ -47,10 +47,9 @@ export function judgeHit(timeDiffMs, combo) {
 /**
  * Create a "miss" judgement (player didn't press, or note scrolled past).
  *
- * @param {number} combo — current combo
  * @returns {HitResult}
  */
-export function judgeMiss(combo) {
+export function judgeMiss() {
   return {
     result: 'miss',
     points: SCORE_MISS,

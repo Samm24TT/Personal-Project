@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { generateBeatmap, resetNoteIds, TRAVEL_S } from './beatmap.js';
-import { LANE_COUNT, HIT_ZONE_Y, SCROLL_SPEED } from '../constants.js';
+import { HIT_ZONE_Y, SCROLL_SPEED } from '../constants.js';
 
 // Reset the note ID counter before each test so tests are independent.
 beforeEach(() => {
